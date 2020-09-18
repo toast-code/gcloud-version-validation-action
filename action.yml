@@ -1,11 +1,13 @@
-name: 'Your name here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: 'Gcloud version validation'
+description: 'Validates a given version against existing app engine versions and cancels if it already exists'
+author: 'ToastCode'
 inputs:
-  milliseconds: # change this
+  current_version:
     required: true
-    description: 'input description here'
-    default: 'default value if applicable'
+    description: 'Current version of the app e.g. 1-0-0'
+  app_yaml_file_path:
+    required: true
+    description: 'Path to app.yaml file'
 runs:
   using: 'node12'
   main: 'dist/index.js'
