@@ -1340,15 +1340,42 @@ const fs = __importStar(__webpack_require__(747));
 const child_process_1 = __webpack_require__(129);
 const gt_1 = __importDefault(__webpack_require__(123));
 const coerce_1 = __importDefault(__webpack_require__(466));
+const dotenv = __importStar(__webpack_require__(437));
+// import variables
+dotenv.config();
 const appToSemverVersion = (version) => {
     return coerce_1.default(String(version).split('-').join('.'));
+};
+const authenticateGCloudCli = (projectId, credentials) => {
+    core.debug('Starting to authenticate gcloud');
+    const isBase64 = (str) => {
+        const base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+        return !!str && base64Regex.test(str);
+    };
+    const writeData = isBase64(credentials)
+        ? Buffer.from(credentials, 'base64')
+        : credentials;
+    core.debug('Writing authentication file');
+    fs.writeFileSync('/tmp/account.json', writeData, { encoding: 'utf8' });
+    // authenticate
+    core.debug('Authenticating with gcloud');
+    child_process_1.execSync(`gcloud auth activate-service-account --key-file=/tmp/account.json`);
+    // set project
+    core.debug('Setting gcloud project');
+    child_process_1.execSync(`gcloud config set project "${projectId}"`);
 };
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
+            // variables
+            let serviceName = 'default';
             const currentSemverVersion = appToSemverVersion(core.getInput('current_version'));
             const appYamlFilePath = core.getInput('app_yaml_file_path');
-            let serviceName = 'default';
+            // environment variables
+            const projectId = String(process.env.GCLOUD_PROJECT_ID);
+            const applicationCredentials = String(process.env.GCLOUD_APPLICATION_CREDENTIALS);
+            core.debug('Setup all variables');
+            authenticateGCloudCli(projectId, applicationCredentials);
             const gcpAppConfig = yaml.safeLoad(fs.readFileSync(appYamlFilePath, 'utf8'));
             if (gcpAppConfig && gcpAppConfig.service) {
                 serviceName = gcpAppConfig.service;
@@ -3906,6 +3933,126 @@ const debug = (
   : () => {}
 
 module.exports = debug
+
+
+/***/ }),
+
+/***/ 437:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+/* @flow */
+/*::
+
+type DotenvParseOptions = {
+  debug?: boolean
+}
+
+// keys and values from src
+type DotenvParseOutput = { [string]: string }
+
+type DotenvConfigOptions = {
+  path?: string, // path to .env file
+  encoding?: string, // encoding of .env file
+  debug?: string // turn on logging for debugging purposes
+}
+
+type DotenvConfigOutput = {
+  parsed?: DotenvParseOutput,
+  error?: Error
+}
+
+*/
+
+const fs = __webpack_require__(747)
+const path = __webpack_require__(622)
+
+function log (message /*: string */) {
+  console.log(`[dotenv][DEBUG] ${message}`)
+}
+
+const NEWLINE = '\n'
+const RE_INI_KEY_VAL = /^\s*([\w.-]+)\s*=\s*(.*)?\s*$/
+const RE_NEWLINES = /\\n/g
+const NEWLINES_MATCH = /\n|\r|\r\n/
+
+// Parses src into an Object
+function parse (src /*: string | Buffer */, options /*: ?DotenvParseOptions */) /*: DotenvParseOutput */ {
+  const debug = Boolean(options && options.debug)
+  const obj = {}
+
+  // convert Buffers before splitting into lines and processing
+  src.toString().split(NEWLINES_MATCH).forEach(function (line, idx) {
+    // matching "KEY' and 'VAL' in 'KEY=VAL'
+    const keyValueArr = line.match(RE_INI_KEY_VAL)
+    // matched?
+    if (keyValueArr != null) {
+      const key = keyValueArr[1]
+      // default undefined or missing values to empty string
+      let val = (keyValueArr[2] || '')
+      const end = val.length - 1
+      const isDoubleQuoted = val[0] === '"' && val[end] === '"'
+      const isSingleQuoted = val[0] === "'" && val[end] === "'"
+
+      // if single or double quoted, remove quotes
+      if (isSingleQuoted || isDoubleQuoted) {
+        val = val.substring(1, end)
+
+        // if double quoted, expand newlines
+        if (isDoubleQuoted) {
+          val = val.replace(RE_NEWLINES, NEWLINE)
+        }
+      } else {
+        // remove surrounding whitespace
+        val = val.trim()
+      }
+
+      obj[key] = val
+    } else if (debug) {
+      log(`did not match key and value when parsing line ${idx + 1}: ${line}`)
+    }
+  })
+
+  return obj
+}
+
+// Populates process.env from .env file
+function config (options /*: ?DotenvConfigOptions */) /*: DotenvConfigOutput */ {
+  let dotenvPath = path.resolve(process.cwd(), '.env')
+  let encoding /*: string */ = 'utf8'
+  let debug = false
+
+  if (options) {
+    if (options.path != null) {
+      dotenvPath = options.path
+    }
+    if (options.encoding != null) {
+      encoding = options.encoding
+    }
+    if (options.debug != null) {
+      debug = true
+    }
+  }
+
+  try {
+    // specifying an encoding returns a string instead of a buffer
+    const parsed = parse(fs.readFileSync(dotenvPath, { encoding }), { debug })
+
+    Object.keys(parsed).forEach(function (key) {
+      if (!Object.prototype.hasOwnProperty.call(process.env, key)) {
+        process.env[key] = parsed[key]
+      } else if (debug) {
+        log(`"${key}" is already defined in \`process.env\` and will not be overwritten`)
+      }
+    })
+
+    return { parsed }
+  } catch (e) {
+    return { error: e }
+  }
+}
+
+module.exports.config = config
+module.exports.parse = parse
 
 
 /***/ }),

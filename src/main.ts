@@ -5,6 +5,9 @@ import {exec, execSync} from 'child_process';
 import semverGt from 'semver/functions/gt';
 import semverCoerce from 'semver/functions/coerce';
 import {IServiceVersion} from './common';
+import * as dotenv from 'dotenv';
+// import variables
+dotenv.config();
 
 const appToSemverVersion = (version: string) => {
   return semverCoerce(String(version).split('-').join('.'));
@@ -14,6 +17,7 @@ const authenticateGCloudCli = (
   projectId: string,
   credentials: string
 ): void => {
+  core.debug('Starting to authenticate gcloud');
   const isBase64 = (str: string): boolean => {
     const base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
     return !!str && base64Regex.test(str);
@@ -23,17 +27,21 @@ const authenticateGCloudCli = (
     ? Buffer.from(credentials, 'base64')
     : credentials;
 
+  core.debug('Writing authentication file');
   fs.writeFileSync('/tmp/account.json', writeData, {encoding: 'utf8'});
 
   // authenticate
+  core.debug('Authenticating with gcloud');
   execSync(`gcloud auth activate-service-account --key-file=/tmp/account.json`);
   // set project
+  core.debug('Setting gcloud project');
   execSync(`gcloud config set project "${projectId}"`);
 };
 
 async function run(): Promise<void> {
   try {
     // variables
+    let serviceName = 'default';
     const currentSemverVersion = appToSemverVersion(
       core.getInput('current_version')
     );
@@ -44,9 +52,9 @@ async function run(): Promise<void> {
       process.env.GCLOUD_APPLICATION_CREDENTIALS
     );
 
-    authenticateGCloudCli(projectId, applicationCredentials);
+    core.debug('Setup all variables');
 
-    let serviceName = 'default';
+    authenticateGCloudCli(projectId, applicationCredentials);
 
     const gcpAppConfig = yaml.safeLoad(
       fs.readFileSync(appYamlFilePath, 'utf8')
