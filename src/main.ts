@@ -1,51 +1,62 @@
 import * as core from '@actions/core';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
-import {exec, execSync} from 'child_process';
+import {exec} from 'child_process';
 import semverGt from 'semver/functions/gt';
+import semverIncrement from 'semver/functions/inc';
+import semverRSort from 'semver/functions/rsort';
 import semverCoerce from 'semver/functions/coerce';
 import {IServiceVersion} from './common';
 import * as dotenv from 'dotenv';
+import {
+  convertSemverToServiceVersion,
+  convertServiceVersionToSemver
+} from './utils';
+import {authenticateGCloudCli} from './auth-gcloud';
+import SemVer from 'semver/classes/semver';
 // import variables
 dotenv.config();
 
-const appToSemverVersion = (version: string) => {
-  return semverCoerce(String(version).split('-').join('.'));
+const getSemverFromPackageJson = (): SemVer => {
+  const packageJsonFilePath = core.getInput('package_json_file_path');
+  const packageJSON = JSON.parse(fs.readFileSync(packageJsonFilePath, 'utf8'));
+  if (!packageJSON.version) {
+    core.setFailed('package.json does not contain a version.');
+  }
+  const semverVersion = semverCoerce(packageJSON.version);
+
+  if (!semverVersion) {
+    core.setFailed('package.json version is not a valid semver version.');
+  }
+
+  return semverVersion!;
 };
 
-const authenticateGCloudCli = (
-  projectId: string,
-  credentials: string
-): void => {
-  core.debug('Starting to authenticate gcloud');
-  const isBase64 = (str: string): boolean => {
-    const base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
-    return !!str && base64Regex.test(str);
+const getServiceName = () => {
+  let serviceName = 'default';
+  const appYamlFilePath = core.getInput('app_yaml_file_path');
+  const gcpAppConfig = yaml.safeLoad(
+    fs.readFileSync(appYamlFilePath, 'utf8')
+  ) as {
+    service: string;
   };
 
-  const writeData = isBase64(credentials)
-    ? Buffer.from(credentials, 'base64')
-    : credentials;
+  if (gcpAppConfig && gcpAppConfig.service) {
+    serviceName = gcpAppConfig.service;
+  } else {
+    core.warning(
+      `App service is missing in configuration, using ${serviceName}`
+    );
+  }
 
-  core.debug('Writing authentication file');
-  fs.writeFileSync('/tmp/account.json', writeData, {encoding: 'utf8'});
-
-  // authenticate
-  core.debug('Authenticating with gcloud');
-  execSync(`gcloud auth activate-service-account --key-file=/tmp/account.json`);
-  // set project
-  core.debug('Setting gcloud project');
-  execSync(`gcloud config set project "${projectId}"`);
+  return serviceName;
 };
 
 async function run(): Promise<void> {
   try {
-    // variables
-    let serviceName = 'default';
-    const currentSemverVersion = appToSemverVersion(
-      core.getInput('current_version')
-    );
-    const appYamlFilePath = core.getInput('app_yaml_file_path');
+    // input variables
+    const currentSemverVersion = getSemverFromPackageJson();
+    const serviceName = getServiceName();
     // environment variables
     const projectId = String(process.env.GCLOUD_PROJECT_ID);
     const applicationCredentials = String(
@@ -54,25 +65,12 @@ async function run(): Promise<void> {
 
     core.debug('Setup all variables');
 
+    // auth gcloud
     authenticateGCloudCli(projectId, applicationCredentials);
-
-    const gcpAppConfig = yaml.safeLoad(
-      fs.readFileSync(appYamlFilePath, 'utf8')
-    ) as {
-      service: string;
-    };
-
-    if (gcpAppConfig && gcpAppConfig.service) {
-      serviceName = gcpAppConfig.service;
-    } else {
-      core.warning(
-        `App service is missing in configuration, using ${serviceName}`
-      );
-    }
 
     const getGCloudVersions = exec(
       `gcloud app versions list --service="${serviceName}" --format="json"`,
-      function (error, stdout, stderr) {
+      function (error, stdout) {
         if (error) {
           core.error(`Error stack: ${JSON.stringify(error.stack, null, 2)}`);
           core.error(`Error code: ${error.code}`);
@@ -83,25 +81,41 @@ async function run(): Promise<void> {
 
         const existingVersions: IServiceVersion[] = JSON.parse(stdout);
 
+        // get all existing service versions
         const existingSemverVersions = existingVersions
           .map(version => String(version.id))
-          .map(versionId => appToSemverVersion(versionId));
+          .map(versionId => convertServiceVersionToSemver(versionId));
+
+        // check if current version greater than every published one
         const isValid = existingSemverVersions.every(semverVersion =>
-          semverGt(currentSemverVersion!, semverVersion!)
+          semverGt(currentSemverVersion, semverVersion)
         );
 
         if (!isValid) {
+          const latestSemverVersion = semverRSort(existingSemverVersions)[0];
           core.setFailed(
-            `Current semver version ${currentSemverVersion} is lower than existing versions: [${existingSemverVersions.join(
+            `Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(
               ' , '
-            )}] Update your version to publish another service version.`
+            )}] Update your version to be at least "${semverIncrement(
+              latestSemverVersion,
+              'patch'
+            )}" to publish another service version.`
           );
           return;
         }
 
-        core.debug(`Child Process STDOUT: ${stdout}`);
-        core.debug(`Child Process STDERR: ${stderr}`);
-        core.setOutput('valid', isValid);
+        const gcloudAppServiceVersion = convertSemverToServiceVersion(
+          currentSemverVersion
+        );
+
+        core.exportVariable(
+          'GCLOUD_APP_SERVICE_VERSION',
+          gcloudAppServiceVersion
+        );
+
+        core.debug(
+          `Exported valid gcloud version: "${gcloudAppServiceVersion}" to GCLOUD_APP_SERVICE_VERSION`
+        );
       }
     );
 

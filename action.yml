@@ -1,13 +1,13 @@
 name: 'Gcloud version validation'
-description: 'Validates a given version against existing app engine versions and cancels if it already exists'
-author: 'ToastCode'
+description: 'Validates and exports the current package.json version against all published service versions existing in a gcloud project.'
+author: 'Herbert Hart'
 inputs:
-  current_version:
-    required: true
-    description: 'Current version of the app e.g. 1-0-0'
   app_yaml_file_path:
     required: true
     description: 'Path to app.yaml file'
+  package_json_file_path:
+    required: true
+    description: 'Path to package.json file'
 runs:
   using: 'node12'
   main: 'dist/index.js'
