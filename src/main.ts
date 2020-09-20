@@ -69,7 +69,7 @@ async function run(): Promise<void> {
     authenticateGCloudCli(projectId, applicationCredentials);
 
     const getGCloudVersions = exec(
-      `gcloud app versions list --service="${serviceName}" --format="json"`,
+      `gcloud app versions list --format="json"`,
       function (error, stdout) {
         if (error) {
           core.error(`Error stack: ${JSON.stringify(error.stack, null, 2)}`);
@@ -83,6 +83,7 @@ async function run(): Promise<void> {
 
         // get all existing service versions
         const existingSemverVersions = existingVersions
+          .filter(version => version.service === serviceName)
           .map(version => String(version.id))
           .map(versionId => convertServiceVersionToSemver(versionId));
 
@@ -113,8 +114,8 @@ async function run(): Promise<void> {
           gcloudAppServiceVersion
         );
 
-        core.debug(
-          `Exported valid gcloud version: "${gcloudAppServiceVersion}" to GCLOUD_APP_SERVICE_VERSION`
+        core.info(
+          `Exported valid gcloud version to $GCLOUD_APP_SERVICE_VERSION`
         );
       }
     );

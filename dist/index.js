@@ -1383,7 +1383,7 @@ function run() {
             core.debug('Setup all variables');
             // auth gcloud
             auth_gcloud_1.authenticateGCloudCli(projectId, applicationCredentials);
-            const getGCloudVersions = child_process_1.exec(`gcloud app versions list --service="${serviceName}" --format="json"`, function (error, stdout) {
+            const getGCloudVersions = child_process_1.exec(`gcloud app versions list --format="json"`, function (error, stdout) {
                 if (error) {
                     core.error(`Error stack: ${JSON.stringify(error.stack, null, 2)}`);
                     core.error(`Error code: ${error.code}`);
@@ -1394,6 +1394,7 @@ function run() {
                 const existingVersions = JSON.parse(stdout);
                 // get all existing service versions
                 const existingSemverVersions = existingVersions
+                    .filter(version => version.service === serviceName)
                     .map(version => String(version.id))
                     .map(versionId => utils_1.convertServiceVersionToSemver(versionId));
                 // check if current version greater than every published one
@@ -1405,7 +1406,7 @@ function run() {
                 }
                 const gcloudAppServiceVersion = utils_1.convertSemverToServiceVersion(currentSemverVersion);
                 core.exportVariable('GCLOUD_APP_SERVICE_VERSION', gcloudAppServiceVersion);
-                core.debug(`Exported valid gcloud version: "${gcloudAppServiceVersion}" to GCLOUD_APP_SERVICE_VERSION`);
+                core.info(`Exported valid gcloud version to $GCLOUD_APP_SERVICE_VERSION`);
             });
             getGCloudVersions.on('exit', function (code) {
                 core.debug(`Child process exited with exit code ${code}`);
@@ -4830,10 +4831,10 @@ exports.authenticateGCloudCli = (projectId, credentials) => {
     core.debug('Writing authentication file');
     fs_1.default.writeFileSync('/tmp/account.json', writeData, { encoding: 'utf8' });
     // authenticate
-    core.debug('Authenticating with gcloud');
+    core.info('Authenticating with gcloud');
     child_process_1.execSync(`gcloud auth activate-service-account --key-file=/tmp/account.json`);
     // set project
-    core.debug('Setting gcloud project');
+    core.info('Setting gcloud project');
     child_process_1.execSync(`gcloud config set project "${projectId}"`);
 };
 

@@ -20,9 +20,9 @@ export const authenticateGCloudCli = (
   fs.writeFileSync('/tmp/account.json', writeData, {encoding: 'utf8'});
 
   // authenticate
-  core.debug('Authenticating with gcloud');
+  core.info('Authenticating with gcloud');
   execSync(`gcloud auth activate-service-account --key-file=/tmp/account.json`);
   // set project
-  core.debug('Setting gcloud project');
+  core.info('Setting gcloud project');
   execSync(`gcloud config set project "${projectId}"`);
 };
