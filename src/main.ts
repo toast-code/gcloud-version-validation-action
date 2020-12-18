@@ -32,7 +32,7 @@ const getSemverFromPackageJson = (): SemVer => {
   return semverVersion!;
 };
 
-const getServiceName = () => {
+const getServiceName = (): string => {
   let serviceName = 'default';
   const appYamlFilePath = core.getInput('app_yaml_file_path');
   const gcpAppConfig = yaml.safeLoad(
