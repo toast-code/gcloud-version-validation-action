@@ -1440,6 +1440,7 @@ const yaml = __importStar(__webpack_require__(917));
 const fs = __importStar(__webpack_require__(747));
 const child_process_1 = __webpack_require__(129);
 const gt_1 = __importDefault(__webpack_require__(123));
+const eq_1 = __importDefault(__webpack_require__(898));
 const inc_1 = __importDefault(__webpack_require__(900));
 const rsort_1 = __importDefault(__webpack_require__(701));
 const coerce_1 = __importDefault(__webpack_require__(466));
@@ -1498,14 +1499,17 @@ function run() {
                     .filter(version => version.service === serviceName)
                     .map(version => String(version.id))
                     .map(versionId => utils_1.convertServiceVersionToSemver(versionId));
-                // check if current version greater than every published one
-                const isValid = existingSemverVersions.every(semverVersion => gt_1.default(currentSemverVersion, semverVersion));
-                if (!isValid) {
-                    const latestSemverVersion = rsort_1.default(existingSemverVersions)[0];
+                const latestSemverVersion = rsort_1.default(existingSemverVersions)[0];
+                if (gt_1.default(latestSemverVersion, currentSemverVersion)) {
                     core.setFailed(`Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(' , ')}] Update your version to be at least "${inc_1.default(latestSemverVersion, 'patch')}" to publish another service version.`);
                     return;
                 }
-                const gcloudAppServiceVersion = utils_1.convertSemverToServiceVersion(currentSemverVersion);
+                let suffix = '';
+                if (eq_1.default(latestSemverVersion, currentSemverVersion)) {
+                    core.info(`Current version same as the latest published version. Adding a suffix to the version`);
+                    suffix = utils_1.getRandomSuffix(3);
+                }
+                const gcloudAppServiceVersion = utils_1.convertSemverToServiceVersion(currentSemverVersion, suffix);
                 core.exportVariable('GCLOUD_APP_SERVICE_VERSION', gcloudAppServiceVersion);
                 core.info(`Exported valid gcloud version to $GCLOUD_APP_SERVICE_VERSION`);
             });
@@ -1668,6 +1672,25 @@ module.exports = new Schema({
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -1677,14 +1700,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
-    return result;
-};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
 const command_1 = __webpack_require__(351);
 const file_command_1 = __webpack_require__(717);
 const utils_1 = __webpack_require__(278);
@@ -1751,7 +1768,9 @@ function addPath(inputPath) {
 }
 exports.addPath = addPath;
 /**
- * Gets the value of an input.  The value is also trimmed.
+ * Gets the value of an input.
+ * Unless trimWhitespace is set to false in InputOptions, the value is also trimmed.
+ * Returns an empty string if the value is not defined.
  *
  * @param     name     name of the input to get
  * @param     options  optional. See InputOptions.
@@ -1762,9 +1781,49 @@ function getInput(name, options) {
     if (options && options.required && !val) {
         throw new Error(`Input required and not supplied: ${name}`);
     }
+    if (options && options.trimWhitespace === false) {
+        return val;
+    }
     return val.trim();
 }
 exports.getInput = getInput;
+/**
+ * Gets the values of an multiline input.  Each value is also trimmed.
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   string[]
+ *
+ */
+function getMultilineInput(name, options) {
+    const inputs = getInput(name, options)
+        .split('\n')
+        .filter(x => x !== '');
+    return inputs;
+}
+exports.getMultilineInput = getMultilineInput;
+/**
+ * Gets the input value of the boolean type in the YAML 1.2 "core schema" specification.
+ * Support boolean input list: `true | True | TRUE | false | False | FALSE` .
+ * The return value is also in boolean type.
+ * ref: https://yaml.org/spec/1.2/spec.html#id2804923
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   boolean
+ */
+function getBooleanInput(name, options) {
+    const trueValue = ['true', 'True', 'TRUE'];
+    const falseValue = ['false', 'False', 'FALSE'];
+    const val = getInput(name, options);
+    if (trueValue.includes(val))
+        return true;
+    if (falseValue.includes(val))
+        return false;
+    throw new TypeError(`Input does not meet YAML 1.2 "Core Schema" specification: ${name}\n` +
+        `Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
+}
+exports.getBooleanInput = getBooleanInput;
 /**
  * Sets the value of an output.
  *
@@ -1773,6 +1832,7 @@ exports.getInput = getInput;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setOutput(name, value) {
+    process.stdout.write(os.EOL);
     command_1.issueCommand('set-output', { name }, value);
 }
 exports.setOutput = setOutput;
@@ -3724,6 +3784,7 @@ module.exports = new Type('tag:yaml.org,2002:js/regexp', {
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.toCommandValue = void 0;
 /**
  * Sanitizes an input into a string so it can be passed into issueCommand safely
  * @param input input to sanitize into a string
@@ -3783,14 +3844,27 @@ module.exports = compare
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __importStar = (this && this.__importStar) || function (mod) {
     if (mod && mod.__esModule) return mod;
     var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.issue = exports.issueCommand = void 0;
 const os = __importStar(__webpack_require__(87));
 const utils_1 = __webpack_require__(278);
 /**
@@ -5155,14 +5229,27 @@ module.exports = new Type('tag:yaml.org,2002:timestamp', {
 "use strict";
 
 // For internal use, subject to change.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __importStar = (this && this.__importStar) || function (mod) {
     if (mod && mod.__esModule) return mod;
     var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.issueCommand = void 0;
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const fs = __importStar(__webpack_require__(747));
@@ -5221,6 +5308,16 @@ module.exports = Schema.DEFAULT = new Schema({
     __webpack_require__(4)
   ]
 });
+
+
+/***/ }),
+
+/***/ 898:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const compare = __webpack_require__(309)
+const eq = (a, b, loose) => compare(a, b, loose) === 0
+module.exports = eq
 
 
 /***/ }),
@@ -5354,16 +5451,28 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.convertServiceVersionToSemver = exports.convertSemverToServiceVersion = void 0;
+exports.getRandomSuffix = exports.convertServiceVersionToSemver = exports.convertSemverToServiceVersion = void 0;
 const valid_1 = __importDefault(__webpack_require__(601));
 const coerce_1 = __importDefault(__webpack_require__(466));
-exports.convertSemverToServiceVersion = (version) => {
-    return String(valid_1.default(coerce_1.default(version)))
+exports.convertSemverToServiceVersion = (version, suffix) => {
+    let serviceVersion = String(valid_1.default(coerce_1.default(version)))
         .split('.')
         .join('-');
+    if (suffix && suffix.length > 0) {
+        serviceVersion += `-${suffix}`;
+    }
+    return serviceVersion;
 };
 exports.convertServiceVersionToSemver = (version) => {
     return coerce_1.default(String(version).split('-').join('.'));
+};
+exports.getRandomSuffix = (characterLength) => {
+    const characters = 'abcdefghijklmnopqrstuvwxyz';
+    const charactersLength = characters.length;
+    return new Array(characterLength)
+        .fill(0)
+        .map(() => characters.charAt(Math.floor(Math.random() * charactersLength)))
+        .join('');
 };
 
 
