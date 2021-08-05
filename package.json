@@ -1,6 +1,6 @@
 {
   "name": "gcloud-version-validation-action",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Validates the current app engine version against existing ones",
   "main": "lib/main.js",

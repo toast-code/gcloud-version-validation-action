@@ -90,8 +90,17 @@ async function run(): Promise<void> {
           .map(versionId => convertServiceVersionToSemver(versionId));
 
         const latestSemverVersion = semverRSort(existingSemverVersions)[0];
+        const allowSameVersion = core.getBooleanInput('allow_same_version');
 
-        if (semverGt(latestSemverVersion, currentSemverVersion)) {
+        const isSameVersion = semverEq(
+          latestSemverVersion,
+          currentSemverVersion
+        );
+
+        if (
+          semverGt(latestSemverVersion, currentSemverVersion) ||
+          (isSameVersion && !allowSameVersion)
+        ) {
           core.setFailed(
             `Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(
               ' , '
@@ -105,7 +114,7 @@ async function run(): Promise<void> {
 
         let suffix = '';
 
-        if (semverEq(latestSemverVersion, currentSemverVersion)) {
+        if (isSameVersion) {
           core.info(
             `Current version same as the latest published version. Adding a suffix to the version`
           );

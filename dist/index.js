@@ -1500,12 +1500,15 @@ function run() {
                     .map(version => String(version.id))
                     .map(versionId => utils_1.convertServiceVersionToSemver(versionId));
                 const latestSemverVersion = rsort_1.default(existingSemverVersions)[0];
-                if (gt_1.default(latestSemverVersion, currentSemverVersion)) {
+                const allowSameVersion = core.getBooleanInput('allow_same_version');
+                const isSameVersion = eq_1.default(latestSemverVersion, currentSemverVersion);
+                if (gt_1.default(latestSemverVersion, currentSemverVersion) ||
+                    (isSameVersion && !allowSameVersion)) {
                     core.setFailed(`Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(' , ')}] Update your version to be at least "${inc_1.default(latestSemverVersion, 'patch')}" to publish another service version.`);
                     return;
                 }
                 let suffix = '';
-                if (eq_1.default(latestSemverVersion, currentSemverVersion)) {
+                if (isSameVersion) {
                     core.info(`Current version same as the latest published version. Adding a suffix to the version`);
                     suffix = utils_1.getRandomSuffix(3);
                 }
