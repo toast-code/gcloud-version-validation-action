@@ -8,6 +8,10 @@ inputs:
   package_json_file_path:
     required: true
     description: 'Path to package.json file'
+  allow_same_version:
+    required: false
+    default: false
+    description: 'If the latest existing version can be used. Appends a random suffix to the version.'
 runs:
   using: 'node12'
   main: 'dist/index.js'
