@@ -92,24 +92,25 @@ async function run(): Promise<void> {
         const latestSemverVersion = semverRSort(existingSemverVersions)[0];
         const allowSameVersion = core.getBooleanInput('allow_same_version');
 
-        const isSameVersion = semverEq(
-          latestSemverVersion,
-          currentSemverVersion
-        );
+        let isSameVersion = false;
 
-        if (
-          semverGt(latestSemverVersion, currentSemverVersion) ||
-          (isSameVersion && !allowSameVersion)
-        ) {
-          core.setFailed(
-            `Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(
-              ' , '
-            )}] Update your version to be at least "${semverIncrement(
-              latestSemverVersion,
-              'patch'
-            )}" to publish another service version.`
-          );
-          return;
+        if (latestSemverVersion) {
+          isSameVersion = semverEq(latestSemverVersion, currentSemverVersion);
+
+          if (
+            semverGt(latestSemverVersion, currentSemverVersion) ||
+            (isSameVersion && !allowSameVersion)
+          ) {
+            core.setFailed(
+              `Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(
+                ' , '
+              )}] Update your version to be at least "${semverIncrement(
+                latestSemverVersion,
+                'patch'
+              )}" to publish another service version.`
+            );
+            return;
+          }
         }
 
         let suffix = '';
@@ -126,14 +127,9 @@ async function run(): Promise<void> {
           suffix
         );
 
-        core.exportVariable(
-          'GCLOUD_APP_SERVICE_VERSION',
-          gcloudAppServiceVersion
-        );
+        core.setOutput('version', gcloudAppServiceVersion);
 
-        core.info(
-          `Exported valid gcloud version to $GCLOUD_APP_SERVICE_VERSION`
-        );
+        core.info(`Exported valid gcloud version to outputs.version`);
       }
     );
 

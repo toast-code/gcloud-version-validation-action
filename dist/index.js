@@ -1501,11 +1501,14 @@ function run() {
                     .map(versionId => utils_1.convertServiceVersionToSemver(versionId));
                 const latestSemverVersion = rsort_1.default(existingSemverVersions)[0];
                 const allowSameVersion = core.getBooleanInput('allow_same_version');
-                const isSameVersion = eq_1.default(latestSemverVersion, currentSemverVersion);
-                if (gt_1.default(latestSemverVersion, currentSemverVersion) ||
-                    (isSameVersion && !allowSameVersion)) {
-                    core.setFailed(`Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(' , ')}] Update your version to be at least "${inc_1.default(latestSemverVersion, 'patch')}" to publish another service version.`);
-                    return;
+                let isSameVersion = false;
+                if (latestSemverVersion) {
+                    isSameVersion = eq_1.default(latestSemverVersion, currentSemverVersion);
+                    if (gt_1.default(latestSemverVersion, currentSemverVersion) ||
+                        (isSameVersion && !allowSameVersion)) {
+                        core.setFailed(`Current semver version ${currentSemverVersion} is not greater than existing versions: [${existingSemverVersions.join(' , ')}] Update your version to be at least "${inc_1.default(latestSemverVersion, 'patch')}" to publish another service version.`);
+                        return;
+                    }
                 }
                 let suffix = '';
                 if (isSameVersion) {
@@ -1513,8 +1516,8 @@ function run() {
                     suffix = utils_1.getRandomSuffix(3);
                 }
                 const gcloudAppServiceVersion = utils_1.convertSemverToServiceVersion(currentSemverVersion, suffix);
-                core.exportVariable('GCLOUD_APP_SERVICE_VERSION', gcloudAppServiceVersion);
-                core.info(`Exported valid gcloud version to $GCLOUD_APP_SERVICE_VERSION`);
+                core.setOutput('version', gcloudAppServiceVersion);
+                core.info(`Exported valid gcloud version to outputs.version`);
             });
             getGCloudVersions.on('exit', function (code) {
                 core.debug(`Child process exited with exit code ${code}`);
